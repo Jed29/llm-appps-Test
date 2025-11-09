@@ -41,7 +41,6 @@ Buka browser ke: `http://localhost:3000`
 ### Environment Variables (.env)
 ```
 PORT=3000
-GOOGLE_MAPS_API_KEY=your_api_key_here
 OLLAMA_URL=http://localhost:11434
 ```
 
