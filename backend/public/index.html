@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mau Kemana - AI Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .title {
+            font-size: 3rem;
+            font-weight: 600;
+            color: white;
+            margin-bottom: 12px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            color: rgba(255, 255, 255, 0.9);
+            font-weight: 300;
+        }
+
+        .input-section {
+            width: 100%;
+            max-width: 600px;
+            margin-bottom: 40px;
+        }
+
+        .input-container {
+            position: relative;
+            background: white;
+            border-radius: 25px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .input-container:focus-within {
+            box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+            transform: translateY(-2px);
+        }
+
+        #locationInput {
+            width: 100%;
+            padding: 20px 60px 20px 25px;
+            border: none;
+            font-size: 1.1rem;
+            outline: none;
+            background: transparent;
+        }
+
+        #locationInput::placeholder {
+            color: #999;
+        }
+
+        .send-button {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            border: none;
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            color: white;
+            font-size: 1.2rem;
+        }
+
+        .send-button:hover {
+            transform: translateY(-50%) scale(1.05);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .send-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+            color: white;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .results {
+            width: 100%;
+            max-width: 800px;
+            margin-top: 20px;
+        }
+
+        .response-card {
+            background: white;
+            border-radius: 20px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            opacity: 0;
+            transform: translateY(20px);
+            animation: slideUp 0.6s ease forwards;
+        }
+
+        @keyframes slideUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .response-text {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .map-container {
+            width: 100%;
+            height: 400px;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            margin-top: 15px;
+        }
+
+        .map-placeholder {
+            width: 100%;
+            height: 100%;
+            background: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+            font-size: 1.1rem;
+        }
+
+        .suggestions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            justify-content: center;
+            margin-top: 30px;
+        }
+
+        .suggestion-chip {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 18px;
+            border-radius: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .suggestion-chip:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .error-message {
+            background: #ff6b6b;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin: 10px 0;
+            text-align: center;
+        }
+
+        @media (max-width: 768px) {
+            .title {
+                font-size: 2.2rem;
+            }
+            
+            .container {
+                padding: 20px 15px;
+            }
+            
+            #locationInput {
+                padding: 18px 55px 18px 20px;
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">Mau Kemana Hari Ini?</h1>
+            <p class="subtitle">Tanya saja, kami akan carikan tempatnya untuk Anda</p>
+        </div>
+
+        <div class="input-section">
+            <div class="input-container">
+                <input 
+                    type="text" 
+                    id="locationInput" 
+                    placeholder="Contoh: Cari restoran sushi terdekat..."
+                    autocomplete="off"
+                >
+                <button class="send-button" id="sendButton" onclick="searchLocation()">
+                    →
+                </button>
+            </div>
+
+            <div class="loading" id="loading">
+                <div class="loading-spinner"></div>
+                <p>Mencari lokasi untuk Anda...</p>
+            </div>
+        </div>
+
+        <div class="suggestions">
+            <div class="suggestion-chip" onclick="quickSearch('restoran terdekat')">🍽️ Restoran Terdekat</div>
+            <div class="suggestion-chip" onclick="quickSearch('ATM terdekat')">🏧 ATM Terdekat</div>
+            <div class="suggestion-chip" onclick="quickSearch('rumah sakit terdekat')">🏥 Rumah Sakit</div>
+            <div class="suggestion-chip" onclick="quickSearch('apotek 24 jam')">💊 Apotek 24 Jam</div>
+            <div class="suggestion-chip" onclick="quickSearch('SPBU terdekat')">⛽ SPBU</div>
+        </div>
+
+        <div class="results" id="results"></div>
+    </div>
+
+    <script>
+        let mapsLoaded = false;
+        let mapCounter = 0;
+
+        // Load Google Maps API securely
+        async function loadGoogleMaps() {
+            try {
+                const response = await fetch('/api/maps-config');
+                const config = await response.json();
+                
+                const script = document.createElement('script');
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${config.apiKey}&libraries=places&callback=mapsReady`;
+                script.defer = true;
+                document.head.appendChild(script);
+            } catch (error) {
+                console.error('Failed to load Google Maps:', error);
+            }
+        }
+
+        // Maps ready callback
+        function mapsReady() {
+            mapsLoaded = true;
+            console.log('✅ Google Maps loaded successfully!');
+        }
+
+        // Handle enter key
+        document.getElementById('locationInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchLocation();
+            }
+        });
+
+        // Quick search function
+        function quickSearch(query) {
+            document.getElementById('locationInput').value = query;
+            searchLocation();
+        }
+
+        // Main search function
+        async function searchLocation() {
+            const input = document.getElementById('locationInput');
+            const query = input.value.trim();
+            
+            if (!query) return;
+
+            const loading = document.getElementById('loading');
+            const sendButton = document.getElementById('sendButton');
+            const results = document.getElementById('results');
+
+            // Show loading
+            loading.style.display = 'block';
+            sendButton.disabled = true;
+            sendButton.textContent = '...';
+
+            try {
+                // Call our LLM API
+                const response = await fetch('/api/ask', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ message: query })
+                });
+
+                const data = await response.json();
+
+                // Hide loading
+                loading.style.display = 'none';
+                sendButton.disabled = false;
+                sendButton.textContent = '→';
+
+                // Display results
+                displayResults(data, query);
+
+            } catch (error) {
+                loading.style.display = 'none';
+                sendButton.disabled = false;
+                sendButton.textContent = '→';
+                
+                results.innerHTML = `
+                    <div class="error-message">
+                        ❌ Maaf, terjadi kesalahan. Pastikan server berjalan di port 3000.
+                    </div>
+                `;
+            }
+        }
+
+        // Display search results
+        function displayResults(data, query) {
+            const results = document.getElementById('results');
+            mapCounter++;
+            const mapId = `map-${mapCounter}`;
+
+            let html = `
+                <div class="response-card">
+                    <div class="response-text">
+                        <strong>🤖 Asisten:</strong> ${data.reply}
+                    </div>
+            `;
+
+            if (data.mapData) {
+                html += `
+                    <div class="map-container">
+                        <div id="${mapId}" class="map-placeholder">
+                            🗺️ Loading map untuk: ${data.mapData.searchQuery}
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px; text-align: center;">
+                        <a href="${data.mapData.mapUrl}" target="_blank" style="
+                            background: linear-gradient(45deg, #667eea, #764ba2);
+                            color: white;
+                            padding: 12px 24px;
+                            text-decoration: none;
+                            border-radius: 25px;
+                            display: inline-block;
+                            margin-top: 10px;
+                            transition: transform 0.3s ease;
+                        " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                            🗺️ Buka di Google Maps
+                        </a>
+                    </div>
+                `;
+
+                // Initialize map after DOM update
+                setTimeout(() => {
+                    if (mapsLoaded) {
+                        initializeMap(data.mapData.searchQuery, mapId);
+                    }
+                }, 100);
+            } else {
+                html += `
+                    <div style="padding: 20px; background: #f8f9fa; border-radius: 10px; text-align: center; color: #666;">
+                        💭 Tidak terdeteksi sebagai query lokasi. Coba: "cari restoran", "dimana ATM terdekat", dll.
+                    </div>
+                `;
+            }
+
+            html += '</div>';
+            results.innerHTML = html;
+
+            // Scroll to results
+            results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // Initialize Google Map
+        function initializeMap(searchQuery, mapId) {
+            const mapElement = document.getElementById(mapId);
+            if (!mapElement) return;
+
+            const map = new google.maps.Map(mapElement, {
+                zoom: 13,
+                center: { lat: -6.2088, lng: 106.8456 }, // Default Jakarta
+                styles: [
+                    {
+                        featureType: 'all',
+                        stylers: [{ saturation: -20 }]
+                    }
+                ]
+            });
+
+            const service = new google.maps.places.PlacesService(map);
+            const request = {
+                query: searchQuery,
+                fields: ['name', 'geometry', 'formatted_address', 'rating', 'photos']
+            };
+
+            service.textSearch(request, (results, status) => {
+                if (status === google.maps.places.PlacesServiceStatus.OK && results) {
+                    // Center on first result
+                    if (results[0]) {
+                        map.setCenter(results[0].geometry.location);
+                    }
+
+                    // Add markers
+                    results.slice(0, 5).forEach((place, index) => {
+                        const marker = new google.maps.Marker({
+                            position: place.geometry.location,
+                            map: map,
+                            title: place.name,
+                            label: (index + 1).toString()
+                        });
+
+                        // Info window
+                        const infoWindow = new google.maps.InfoWindow({
+                            content: `
+                                <div style="padding: 8px;">
+                                    <h3 style="margin: 0 0 8px 0; font-size: 14px;">${place.name}</h3>
+                                    <p style="margin: 0; font-size: 12px; color: #666;">${place.formatted_address}</p>
+                                    ${place.rating ? `<p style="margin: 4px 0 0 0; font-size: 12px;">⭐ ${place.rating}</p>` : ''}
+                                </div>
+                            `
+                        });
+
+                        marker.addListener('click', () => {
+                            infoWindow.open(map, marker);
+                        });
+                    });
+                }
+            });
+        }
+
+        // Load maps on page load
+        loadGoogleMaps();
+    </script>
+</body>
+</html>
