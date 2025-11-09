@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import GeolocationService, { type LocationCoords } from './utils/geolocation';
 
 interface MapData {
   searchQuery: string;
@@ -24,8 +25,14 @@ function App() {
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const mapCounter = useRef(0);
   const [pendingMaps, setPendingMaps] = useState<Array<{searchQuery: string, mapId: string}>>([]);
+  const [userLocation, setUserLocation] = useState<LocationCoords | null>(null);
+  const [locationStatus, setLocationStatus] = useState<'loading' | 'success' | 'error' | 'fallback'>('loading');
+  const geolocationService = useRef(GeolocationService.getInstance());
 
   useEffect(() => {
+    // Initialize location service
+    initializeLocation();
+
     // Add global error handler for Google Maps errors
     const originalError = console.error;
     console.error = (...args) => {
@@ -143,6 +150,44 @@ function App() {
       setTimeout(() => setPendingMaps([]), 2000);
     }
   }, [responses]); // Trigger after responses update
+
+  const initializeLocation = async () => {
+    setLocationStatus('loading');
+    
+    try {
+      // First try to restore from cache
+      const cachedLocation = geolocationService.current.restoreFromCache();
+      if (cachedLocation) {
+        setUserLocation(cachedLocation);
+        setLocationStatus('success');
+        console.log('📍 Using cached location:', cachedLocation);
+        return;
+      }
+
+      // Get fresh location
+      const location = await geolocationService.current.getCurrentLocation();
+      setUserLocation(location);
+      
+      if (location.source === 'fallback') {
+        setLocationStatus('fallback');
+      } else {
+        setLocationStatus('success');
+      }
+      
+      console.log('📍 Location obtained:', location);
+    } catch (error) {
+      console.error('Failed to get location:', error);
+      setLocationStatus('error');
+      
+      // Use Jakarta as absolute fallback
+      const fallbackLocation: LocationCoords = {
+        lat: -6.2088,
+        lng: 106.8456,
+        source: 'fallback'
+      };
+      setUserLocation(fallbackLocation);
+    }
+  };
 
   const loadGoogleMaps = async () => {
     try {
@@ -356,35 +401,20 @@ function App() {
     return;
 
     try {
-      // Get user location first, fallback to Jakarta
-      const defaultLocation = { lat: -6.2088, lng: 106.8456 };
-      let userLocation = defaultLocation;
-
-      // Try to get user's current location
-      if (navigator.geolocation) {
-        try {
-          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              timeout: 5000,
-              enableHighAccuracy: false
-            });
-          });
-          userLocation = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          };
-          console.log('📍 Using user location:', userLocation);
-        } catch (geoError) {
-          console.log('📍 Using default Jakarta location');
-        }
-      }
+      // Use the robust location service
+      const currentLocation = userLocation || {
+        lat: -6.2088,
+        lng: 106.8456
+      };
+      
+      console.log('🗺️ Using location for map:', currentLocation);
 
       // Create map with error handling
       let map;
       try {
         map = new google.maps.Map(mapElement, {
           zoom: 14,
-          center: userLocation,
+          center: currentLocation,
           mapTypeControl: true,
           streetViewControl: true,
           fullscreenControl: true,
@@ -416,8 +446,8 @@ function App() {
       }
       const request: google.maps.places.TextSearchRequest = {
         query: searchQuery,
-        location: userLocation,
-        radius: 5000,
+        location: currentLocation,
+        radius: userLocation?.source === 'gps' ? 2000 : 5000, // Smaller radius for GPS, larger for fallback
         fields: ['name', 'geometry', 'formatted_address', 'rating', 'place_id']
       };
 
@@ -577,27 +607,50 @@ function App() {
   const handleSearch = async () => {
     if (!query.trim()) return;
 
+    // Ensure we have location before searching
+    if (!userLocation) {
+      console.log('📍 No location available, getting location first...');
+      await initializeLocation();
+    }
+
     setLoading(true);
     
     try {
-      // Add retry mechanism for network errors
+      // Add retry mechanism for network errors with exponential backoff
       let response;
       let retries = 3;
       
       while (retries > 0) {
         try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 15000);
+          
           response = await fetch('http://localhost:3000/api/ask', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: query }),
-            timeout: 10000
-          } as RequestInit);
+            headers: { 
+              'Content-Type': 'application/json',
+              'X-User-Location': userLocation ? JSON.stringify({
+                lat: userLocation.lat,
+                lng: userLocation.lng,
+                source: userLocation.source
+              }) : ''
+            },
+            body: JSON.stringify({ 
+              message: query,
+              userLocation: userLocation 
+            }),
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
           break;
         } catch (fetchError) {
           retries--;
           if (retries === 0) throw fetchError;
-          console.log(`Retrying... ${retries} attempts left`);
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          const delay = (4 - retries) * 1000; // Exponential backoff: 1s, 2s, 3s
+          console.log(`⏳ Retrying in ${delay}ms... ${retries} attempts left`);
+          await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
 
@@ -632,8 +685,21 @@ function App() {
       setQuery('');
     } catch (error) {
       console.error('Search failed:', error);
+      
+      let errorMessage = '❌ Maaf, terjadi kesalahan.';
+      
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          errorMessage = '⏱️ Request timeout. Silakan coba lagi.';
+        } else if (error.message.includes('Failed to fetch')) {
+          errorMessage = '🔌 Tidak dapat terhubung ke server. Pastikan server berjalan di port 3000.';
+        } else if (error.message.includes('429')) {
+          errorMessage = '⚠️ Terlalu banyak request. Silakan tunggu sebentar.';
+        }
+      }
+      
       setResponses(prev => [...prev, {
-        reply: '❌ Maaf, terjadi kesalahan. Pastikan server backend berjalan di port 3000.',
+        reply: errorMessage,
         userMessage: query,
         timestamp: new Date().toISOString()
       }]);
@@ -675,6 +741,37 @@ function App() {
           }}>
             Tanya saja, kami akan carikan tempatnya untuk Anda
           </p>
+          
+          {/* Location Status Indicator */}
+          <div style={{ 
+            marginTop: '16px', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            gap: '8px' 
+          }}>
+            {locationStatus === 'loading' && (
+              <span style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.9rem' }}>
+                📍 Mendeteksi lokasi...
+              </span>
+            )}
+            {locationStatus === 'success' && userLocation && (
+              <span style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.9rem' }}>
+                📍 Lokasi: {userLocation.source === 'gps' ? 'GPS' : userLocation.source === 'network' ? 'Network' : userLocation.source === 'ip' ? 'IP' : 'Default'}
+                {userLocation.accuracy && ` (±${Math.round(userLocation.accuracy)}m)`}
+              </span>
+            )}
+            {locationStatus === 'fallback' && (
+              <span style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '0.9rem' }}>
+                📍 Menggunakan lokasi default (Jakarta)
+              </span>
+            )}
+            {locationStatus === 'error' && (
+              <span style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '0.9rem' }}>
+                ⚠️ Gagal mendeteksi lokasi, menggunakan Jakarta
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Search Input */}
@@ -725,7 +822,12 @@ function App() {
 
           {loading && (
             <div style={{ textAlign: 'center', marginTop: '20px', color: 'white' }}>
-              <span>Mencari lokasi untuk Anda...</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                <span>🔍 Mencari lokasi untuk Anda...</span>
+                {userLocation && userLocation.source === 'gps' && (
+                  <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>(GPS aktif)</span>
+                )}
+              </div>
             </div>
           )}
         </div>
